@@ -3,7 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #define MIN(a,b)  ((a)<(b)?(a):(b))
-
+#define BLOCK_LOW(id,p,n)         ((unsigned long long)(id)*(unsigned long long)(n)/(unsigned long long)(p))
 int main (int argc, char *argv[])
 {
    unsigned long int    count;        /* Local prime count */
@@ -31,28 +31,90 @@ int main (int argc, char *argv[])
    MPI_Comm_size (MPI_COMM_WORLD, &p);
    MPI_Barrier(MPI_COMM_WORLD);
    elapsed_time = -MPI_Wtime();
-
-   if (argc != 2) {
+ if (argc != 2) {
       if (!id) printf ("Command line: %s <m>\n", argv[0]);
       MPI_Finalize();
       exit (1);
    }
 
    n = atoll(argv[1]);
-   /* Stop the timer */
-
    /* Add you code here  */
-   
+
+
+    proc0_size = (n-1)/p;
+   if ((2 + proc0_size) < (int) sqrt((double) n)) {
+      if (!id) printf ("Too many processes\n");
+      MPI_Finalize();
+      exit (1);
+   }
+
+
+    low_value = 2 + BLOCK_LOW(id,p,n-1);
+
+    high_value = 2 + ((long int)(id+1)*(long int)(n-1)/(long int)p)-1;
+
+   if(low_value%2==0){
+   low_value=low_value+1;
+   }
+   if(high_value%2==0){
+   high_value=high_value-1;
+   }
+   size=((high_value-low_value)/2)+1;
+
+
+    prime = 3;
+
+ marked = (char *) malloc (size);
+
+   if (marked == NULL) {
+      printf ("Cannot allocate enough memory\n");
+      MPI_Finalize();
+      exit (1);
+   }
+
+   for ( i = 0; i < size; i++) {
+   marked[i] = 0;
+   }
+   if (!id){
+   index = 0;
+   }
 
 
 
+   do {
+      if (prime * prime > low_value)
+         first = ((prime * prime-3) - (low_value-3))/2;
+      else {
+         if (!(low_value % prime)){
+                 first = 0;
+                 }
+         if (prime > low_value%(2*prime)) {
+                 first = (prime-(low_value%prime))/2;
+                 }
+
+                 if (prime < low_value%(2*prime)){
+                 first =prime-(low_value%prime)/2;
+                 }
+
+         }
+                 for (i = first; i < size; i += prime) marked[i] = 1;
+      if (!id) {
+
+         while (marked[++index]);
+         prime = index*2 + 3;
+          }
+/* the process 0 tells other what is the next prime*/
+                  MPI_Bcast (&prime,  1, MPI_INT, 0, MPI_COMM_WORLD);
+          } while (prime * prime <= n);
+
+         count = 0;
+       for (i = 0; i < size; i++){
+      if (!marked[i]) count++;
+          }
 
 
-
-
-
-
-
+   MPI_Reduce (&count, &global_count, 1, MPI_LONG_LONG, MPI_SUM,0, MPI_COMM_WORLD);
+   global_count=global_count+1;
 
    elapsed_time += MPI_Wtime();
 
@@ -66,4 +128,4 @@ int main (int argc, char *argv[])
    MPI_Finalize ();
    return 0;
 }
-
+                                                  
